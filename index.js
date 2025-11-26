@@ -22,14 +22,17 @@ async function queryServer(server) {
   };
 
   try {
+    console.log(`Querying ${server.name} at ${server.ip}:${server.port}...`);
+
     const startTime = Date.now();
     const state = await GameDig.query({
       type: server.type,
       host: server.ip,
-      port: server.internalPort || server.port,
-      socketTimeout: 1000,
-      attemptTimeout: 1000,
-      maxRetries: 1,
+      port: server.port,
+      socketTimeout: 3000,
+      attemptTimeout: 5000,
+      maxRetries: 2,
+      givenPortOnly: true,
     });
 
     const ping = Date.now() - startTime;
@@ -52,7 +55,7 @@ async function queryServer(server) {
       ping,
     };
   } catch (error) {
-    console.error(`Error querying server ${server.name}:`, error.message);
+    console.error(`Error querying server ${server.name} (${server.ip}:${server.port}):`, error.stack || error.message);
     return {
       ...baseStatus,
       error: error instanceof Error ? error.message : 'Unknown error',
