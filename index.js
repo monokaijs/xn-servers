@@ -1,8 +1,10 @@
 const express = require('express');
+const cors = require('cors');
 const {GameDig} = require('gamedig');
 const {GameServers} = require('./config');
 
 const app = express();
+app.use(cors());
 const PORT = process.env.PORT || 3000;
 
 let serverStatusCache = [];
