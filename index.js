@@ -26,7 +26,7 @@ async function queryServer(server) {
     const state = await GameDig.query({
       type: server.type,
       host: server.ip,
-      port: server.port,
+      port: server.internalPort || server.port,
       socketTimeout: 1000,
       attemptTimeout: 1000,
       maxRetries: 1,
