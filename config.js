@@ -4,7 +4,7 @@ const GameServers = [{
   type: 'counterstrike2',
   ip: 'cs2.xomnghien.com',
   port: 27015,
-  internalIp: 'cs2-modded-server',
+  internalIp: 'cs_competitive',
   internalPort: 27015,
 }, {
   id: 'server2',
@@ -12,7 +12,7 @@ const GameServers = [{
   type: 'counterstrike2',
   ip: 'cs2.xomnghien.com',
   port: 27021,
-  internalIp: 'cs2-death-match',
+  internalIp: 'cs2_death_match',
   internalPort: 27015,
 }, {
   id: 'server3',
@@ -20,7 +20,7 @@ const GameServers = [{
   type: 'counterstrike2',
   ip: 'cs2.xomnghien.com',
   port: 27025,
-  internalIp: 'cs2-solo',
+  internalIp: 'cs2_solo',
   internalPort: 27015,
 }]
 
