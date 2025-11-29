@@ -1,36 +1,43 @@
 const express = require('express');
 const cors = require('cors');
 const {GameDig} = require('gamedig');
-const {GameServers} = require('./config');
 
 const app = express();
 app.use(cors());
 const PORT = process.env.PORT || 3000;
 
-let serverStatusCache = [];
-let lastCacheUpdate = 0;
-const QUERY_INTERVAL = 5 * 1000;
+const serverCache = new Map();
+const CACHE_TTL = 5 * 1000;
 
-async function queryServer(server) {
+function getCacheKey(type, ip, port) {
+  return `${type}:${ip}:${port}`;
+}
+
+async function queryServer(type, ip, port) {
+  const cacheKey = getCacheKey(type, ip, port);
+  const cached = serverCache.get(cacheKey);
+
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.data;
+  }
+
   const baseStatus = {
-    id: server.id,
-    name: server.name,
-    ip: server.ip,
-    port: server.port,
-    type: server.type,
+    type,
+    ip,
+    port,
     online: false,
     players: {current: 0, max: 0},
     lastUpdated: new Date().toISOString(),
   };
 
   try {
-    console.log(`Querying ${server.name} at ${server.ip}:${server.port}...`);
+    console.log(`Querying ${type} at ${ip}:${port}...`);
 
     const startTime = Date.now();
     const state = await GameDig.query({
-      type: server.type,
-      host: server.ip,
-      port: server.port,
+      type,
+      host: ip,
+      port,
       socketTimeout: 3000,
       attemptTimeout: 5000,
       maxRetries: 2,
@@ -39,7 +46,7 @@ async function queryServer(server) {
 
     const ping = Date.now() - startTime;
 
-    return {
+    const result = {
       ...baseStatus,
       online: true,
       players: {
@@ -56,68 +63,53 @@ async function queryServer(server) {
       map: state.map || undefined,
       ping,
     };
+
+    serverCache.set(cacheKey, {data: result, timestamp: Date.now()});
+    return result;
   } catch (error) {
-    console.error(`Error querying server ${server.name} (${server.ip}:${server.port}):`, error.stack || error.message);
-    return {
+    console.error(`Error querying server ${type} (${ip}:${port}):`, error.stack || error.message);
+    const result = {
       ...baseStatus,
       error: error instanceof Error ? error.message : 'Unknown error',
     };
+    serverCache.set(cacheKey, {data: result, timestamp: Date.now()});
+    return result;
   }
 }
 
-async function queryAllServers() {
-  if (GameServers.length === 0) {
-    return [];
+function parseAddresses(addressesParam) {
+  if (!addressesParam) return [];
+
+  return addressesParam.split(',').map(addr => {
+    const parts = addr.trim().split(':');
+    if (parts.length < 3) return null;
+    const type = parts[0];
+    const port = parseInt(parts[parts.length - 1], 10);
+    const ip = parts.slice(1, -1).join(':');
+    if (!type || !ip || isNaN(port)) return null;
+    return {type, ip, port};
+  }).filter(Boolean);
+}
+
+app.get('/', async (req, res) => {
+  const {addresses} = req.query;
+
+  if (!addresses) {
+    return res.status(400).json({error: 'Missing addresses query parameter. Format: type:ip:port,type:ip:port,...'});
   }
 
-  const promises = GameServers.map(server => queryServer(server));
-  const results = await Promise.allSettled(promises);
+  const servers = parseAddresses(addresses);
 
-  return results.map((result, index) => {
-    if (result.status === 'fulfilled') {
-      return result.value;
-    } else {
-      const server = GameServers[index];
-      return {
-        id: server.id,
-        name: server.name,
-        ip: server.ip,
-        port: server.port,
-        type: server.type,
-        online: false,
-        players: {current: 0, max: 0},
-        lastUpdated: new Date().toISOString(),
-        error: 'Query failed',
-      };
-    }
-  });
-}
+  if (servers.length === 0) {
+    return res.status(400).json({error: 'Invalid addresses format. Format: type:ip:port,type:ip:port,...'});
+  }
 
-async function refreshCache() {
-  console.log('Refreshing server status cache...');
-  serverStatusCache = await queryAllServers();
-  lastCacheUpdate = Date.now();
-  console.log(`Cache updated at ${new Date(lastCacheUpdate).toISOString()}`);
-}
+  const results = await Promise.all(
+    servers.map(s => queryServer(s.type, s.ip, s.port))
+  );
 
-function getCache() {
-  return {
-    servers: serverStatusCache,
-    lastUpdated: new Date(lastCacheUpdate).toISOString(),
-  };
-}
-
-function startPolling() {
-  refreshCache();
-  setInterval(refreshCache, QUERY_INTERVAL);
-  console.log(`Server polling started with ${QUERY_INTERVAL / 1000}s interval`);
-}
-
-app.get('/', (req, res) => {
-  res.json(getCache());
+  res.json({servers: results});
 });
-
-startPolling();
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
